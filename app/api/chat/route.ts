@@ -18,8 +18,6 @@ export async function POST(req: Request) {
     // 4. 들은 대답을 프론트엔드에게 전달합니다
     return NextResponse.json({ reply: text });
 
-  } catch (error) {
-    // ... (위쪽 코드는 그대로)
 
   } catch (error) {
     // 👇 이 줄을 추가해서 에러 내용을 Vercel 로그에 찍어봅시다!
