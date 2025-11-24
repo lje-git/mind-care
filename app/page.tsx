@@ -34,7 +34,9 @@ export default function Home() {
           setMessages((prev) => [...prev, newMessage]);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("실시간 연결 상태:", status);
+      });
 
     return () => {
       supabase.removeChannel(channel); // 나가면 감시 끝
