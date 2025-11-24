@@ -1,35 +1,63 @@
 "use client";
-import { useState, useRef, useEffect } from "react"; // 👈 useRef, useEffect 추가
+import { useState, useEffect, useRef } from "react";
+import { supabase } from "@/utils/supabase"; // 👈 우리가 만든 도구 가져오기
 
 export default function Home() {
-  // 1. 대화 목록 (배열)
-  const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
-
-  // 2. 현재 입력 중인 글자 (문자열)
+  // 대화 목록 (DB에서 가져온 내용들)
+  const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
-  // ... (기존 useState 코드들 아래에 추가)
-
-  // 1. 스크롤할 위치를 가리키는 '이름표' 만들기
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 2. 메시지 목록(messages)이 바뀔 때마다 실행되는 '감시자'
+  // 1. 처음 들어왔을 때: 옛날 대화 가져오기 + 실시간 구독 시작
   useEffect(() => {
-    // 이름표가 붙은 곳(맨 아래)으로 부드럽게 스크롤 이동!
+    // (1) 옛날 대화 가져오는 함수
+    const fetchMessages = async () => {
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .order("created_at", { ascending: true }); // 오래된 순서대로
+
+      if (data) setMessages(data);
+    };
+
+    fetchMessages(); // 실행!
+
+    // (2) 실시간 대화 감시자 (Realtime)
+    const channel = supabase
+      .channel("chat_room")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          // 누군가 DB에 새 글을 쓰면 여기로 알림이 옵니다!
+          const newMessage = payload.new;
+          setMessages((prev) => [...prev, newMessage]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel); // 나가면 감시 끝
+    };
+  }, []);
+
+  // 스크롤 자동 이동
+  useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 3. 전송 버튼을 눌렀을 때 실행되는 함수 (수정됨)
-  const handleSendMessage = () => {
+  // 전송 버튼 눌렀을 때
+  const handleSendMessage = async () => {
     if (!input.trim()) return;
 
-    // 1) 사용자 메시지 추가
-    const newMessage = { role: "user", text: input };
-    setMessages((prev) => [...prev, newMessage]);
-    setInput(""); // 입력창 비우기
+    const userText = input;
+    setInput(""); // 입력창 바로 비우기
 
-    // 2) 가짜 AI 응답 (1초 뒤에 실행) -> 무작위 답변 버전
-    setTimeout(() => {
-      // 답변 리스트 (여기에 원하는 위로의 말을 잔뜩 넣어보세요!)
+    // 1) 내 메시지를 DB에 저장 (화면 수정 X -> 감시자가 알아서 업데이트해줌)
+    await supabase.from("messages").insert({ role: "user", text: userText });
+
+    // 2) 가짜 AI 답장도 DB에 저장
+    setTimeout(async () => {
       const comfortMessages = [
         "당신의 마음을 이해해요. 조금 더 이야기해 주시겠어요? 🌿",
         "많이 힘드셨겠어요. 제가 여기 있으니 편하게 말씀하세요. ☕️",
@@ -37,15 +65,9 @@ export default function Home() {
         "듣고 있어요. 당신은 혼자가 아니에요. 🤍",
         "반려동물과의 추억을 이야기해주시면 마음이 조금 편해질 거예요.",
       ];
-
-      // 제비뽑기: 0번부터 리스트 개수 사이의 숫자를 랜덤으로 뽑음
       const randomText = comfortMessages[Math.floor(Math.random() * comfortMessages.length)];
 
-      const aiMessage = {
-        role: "assistant",
-        text: randomText, // 뽑은 답변을 넣기
-      };
-      setMessages((prev) => [...prev, aiMessage]);
+      await supabase.from("messages").insert({ role: "assistant", text: randomText });
     }, 1000);
   };
 
@@ -68,20 +90,19 @@ export default function Home() {
             <p>편안하게 이야기를 시작해보세요.</p>
           </div>
         ) : (
-          messages.map((msg, index) => (
+          messages.map((msg) => (
             <div
-              key={index}
+              key={msg.id} // DB의 고유 ID 사용
               className={`max-w-[80%] p-3 rounded-lg ${
                 msg.role === "user"
-                  ? "bg-indigo-100 text-indigo-900 self-end" // 내 말풍선 (오른쪽)
-                  : "bg-gray-100 text-gray-800 self-start" // 상대방 말풍선 (왼쪽)
+                  ? "bg-indigo-100 text-indigo-900 self-end"
+                  : "bg-gray-100 text-gray-800 self-start"
               }`}
             >
               {msg.text}
             </div>
           ))
         )}
-        {/* 👇 여기에 투명한 바닥을 만들고 이름표(ref)를 붙입니다! */}
         <div ref={scrollRef} />
       </div>
 
@@ -91,15 +112,15 @@ export default function Home() {
           type="text"
           className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black"
           placeholder="여기에 고민을 적어주세요..."
-          value={input} // 👈 뇌(State)와 연결됨
-          onChange={(e) => setInput(e.target.value)} // 👈 타자 칠 때마다 기억함
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-  if (e.nativeEvent.isComposing) return; // 👈 글자 조립 중이면 무시해!
-  if (e.key === "Enter") handleSendMessage();
-}} // 👈 엔터키 쳐도 전송됨
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === "Enter") handleSendMessage();
+          }}
         />
         <button
-          onClick={handleSendMessage} // 👈 클릭하면 함수 실행
+          onClick={handleSendMessage}
           className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors"
         >
           전송
