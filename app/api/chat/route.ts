@@ -8,7 +8,7 @@ export async function POST(req: Request) {
 
     // 2. Gemini를 깨웁니다 (비밀 금고에 있는 키 사용!)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     // 3. Gemini에게 질문하고 대답을 듣습니다
     const result = await model.generateContent(message);
