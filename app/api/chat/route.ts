@@ -19,6 +19,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ reply: text });
 
   } catch (error) {
+    // ... (위쪽 코드는 그대로)
+
+  } catch (error) {
+    // 👇 이 줄을 추가해서 에러 내용을 Vercel 로그에 찍어봅시다!
+    console.error("Gemini API Error Details:", error); 
+    
     return NextResponse.json({ error: "Gemini가 아프대요 ㅠㅠ" }, { status: 500 });
   }
-}
+} 
